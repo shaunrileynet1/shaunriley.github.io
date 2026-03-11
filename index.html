@@ -320,14 +320,15 @@
 
   document.addEventListener('keydown', (e) => {
     if (konamiDone) return;
-    if (e.key === KONAMI[konamiPos]) {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (key === KONAMI[konamiPos]) {
       konamiPos++;
       if (konamiPos === KONAMI.length) {
         konamiDone = true;
         triggerEasterEgg();
       }
     } else {
-      konamiPos = e.key === KONAMI[0] ? 1 : 0;
+      konamiPos = key === KONAMI[0] ? 1 : 0;
     }
   });
 
@@ -344,10 +345,10 @@
 
     // ls output lines, revealed one at a time
     const lines = [
-      'total 0',
-      'drwxr-xr-x  2 root root   40 Jan  1 00:00 <span style="color:var(--accent)">.</span>',
-      'drwxr-xr-x 18 root root  360 Jan  1 00:00 <span style="color:var(--accent)">..</span>',
-      '-rwxr-xr-x  1 root root    0 Jan  1 00:00 <span style="color:var(--text)">website.sh</span>',
+      'total 4',
+      'drwxr-xr-x  2 root root   64 Jan  1 00:00 <span style="color:var(--accent)">.</span>',
+      'drwxr-xr-x 18 root root  576 Jan  1 00:00 <span style="color:var(--accent)">..</span>',
+      '-rwxr-xr-x  1 root root  128 Jan  1 00:00 <span style="color:var(--text)">website.sh</span>',
       '<span style="color:var(--dim); font-style:italic"># that\'s it. there is nothing else.</span>',
     ];
 
