@@ -64,6 +64,32 @@
     height: 16px;
     cursor: se-resize;
     z-index: 10;
+    overflow: hidden;
+  }
+  .resize-handle::before,
+  .resize-handle::after {
+    content: '';
+    position: absolute;
+    background: var(--dim);
+    width: 10px;
+    height: 1px;
+    border-radius: 1px;
+    transform-origin: right center;
+    transition: background 0.15s ease;
+  }
+  .resize-handle::before {
+    bottom: 5px;
+    right: 2px;
+    transform: rotate(-45deg);
+  }
+  .resize-handle::after {
+    bottom: 9px;
+    right: 2px;
+    transform: rotate(-45deg);
+  }
+  .resize-handle:hover::before,
+  .resize-handle:hover::after {
+    background: var(--text);
   }
 
   @keyframes fadeIn {
@@ -547,8 +573,11 @@
 
   document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
-    terminal.style.left = (e.clientX - dragOffsetX) + 'px';
-    terminal.style.top  = (e.clientY - dragOffsetY) + 'px';
+    const rect = terminal.getBoundingClientRect();
+    const newLeft = Math.min(Math.max(0, e.clientX - dragOffsetX), window.innerWidth - rect.width);
+    const newTop  = Math.min(Math.max(0, e.clientY - dragOffsetY), window.innerHeight - 40);
+    terminal.style.left = newLeft + 'px';
+    terminal.style.top  = newTop + 'px';
   });
 
   document.addEventListener('mouseup', () => {
@@ -580,8 +609,11 @@
 
   document.addEventListener('mousemove', (e) => {
     if (!isResizing) return;
-    const newW = Math.max(320, resizeStartW + (e.clientX - resizeStartX));
-    const newH = Math.max(200, resizeStartH + (e.clientY - resizeStartY));
+    const rect = terminal.getBoundingClientRect();
+    const maxW = window.innerWidth - rect.left;
+    const maxH = window.innerHeight - rect.top;
+    const newW = Math.min(maxW, Math.max(320, resizeStartW + (e.clientX - resizeStartX)));
+    const newH = Math.min(maxH, Math.max(200, resizeStartH + (e.clientY - resizeStartY)));
     terminal.style.width = newW + 'px';
     terminal.style.maxWidth = newW + 'px';
     terminal.style.height = newH + 'px';
