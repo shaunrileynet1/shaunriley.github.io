@@ -471,7 +471,6 @@
 
   document.addEventListener('keydown', (e) => {
     if (isClosed || konamiDone) return;
-    if (document.activeElement === cmdInput) return;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (key === KONAMI[konamiPos]) {
       konamiPos++;
