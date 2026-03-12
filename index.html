@@ -26,7 +26,7 @@
   body {
     background: var(--bg);
     font-family: 'DM Mono', 'Courier New', monospace;
-    min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -75,7 +75,7 @@
     inset: 0;
     max-width: 100vw;
     width: 100vw;
-    height: 100vh;
+    height: 100dvh;
     border-radius: 0;
     border: none;
     z-index: 9999;
@@ -124,7 +124,6 @@
     cursor: pointer;
     position: relative;
     transition: filter 0.15s ease;
-    /* icon glyphs hidden by default, shown on titlebar hover */
   }
   .dot::after {
     content: '';
@@ -145,7 +144,6 @@
   .dot.yellow::after { content: '−'; }
   .dot.green::after  { content: '+'; }
 
-  /* Show icons on titlebar hover (Mac behaviour) */
   .titlebar:hover .dot::after { opacity: 1; }
 
   .dot.red    { background: #ff5f57; }
@@ -156,7 +154,6 @@
   .dot.yellow:hover { filter: brightness(1.2); }
   .dot.green:hover  { filter: brightness(1.2); }
 
-  /* Active press feedback */
   .dot:active { filter: brightness(0.75) !important; transform: scale(0.88); }
 
   .titlebar-label {
@@ -175,7 +172,7 @@
       max-height 0.35s cubic-bezier(0.4,0,0.2,1),
       padding 0.35s cubic-bezier(0.4,0,0.2,1),
       opacity 0.25s ease;
-    max-height: 600px;
+    max-height: 800px;
     opacity: 1;
     overflow: hidden;
   }
@@ -227,20 +224,72 @@
   }
   .output .comment a:hover { color: #6abf6a; }
 
-  .cursor {
-    display: inline-block;
-    width: 0.5em;
-    height: 0.9em;
-    background: var(--accent);
-    vertical-align: text-bottom;
-    margin-left: 2px;
-    animation: blink 1.1s step-end infinite;
-    opacity: 0.8;
+  /* ── Interactive input area ── */
+  .input-area {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
   }
 
-  @keyframes blink {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 0; }
+  .input-line {
+    display: flex;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--dim);
+    gap: 0.4rem;
+  }
+
+  .input-line .ps1 { color: #ff5f57; white-space: nowrap; }
+
+  .input-line input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'DM Mono', 'Courier New', monospace;
+    font-size: 0.75rem;
+    flex: 1;
+    caret-color: var(--accent);
+    min-width: 0;
+  }
+
+  .response-log {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.9;
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .response-log::-webkit-scrollbar { display: none; }
+
+  .response-line {
+    animation: fadeIn 0.3s ease both;
+  }
+
+  .response-line.cmd {
+    color: var(--dim);
+  }
+
+  .response-line.cmd .ps1 { color: #ff5f57; }
+
+  .response-line.err {
+    color: #ff5f57;
+  }
+
+  .response-line.info {
+    color: #888;
+    font-style: italic;
+  }
+
+  .response-line.warn {
+    color: #febc2e;
+    font-style: italic;
+  }
+
+  .response-line.ok {
+    color: #28c840;
+    font-style: italic;
   }
 </style>
 </head>
@@ -255,11 +304,19 @@
     <div class="body" id="body">
       <div class="prompt"><span>root@localhost</span>:~# ./website.sh</div>
       <h1>shaunriley.net</h1>
-      <p class="tagline">it was cheaper than .com.<span class="cursor"></span></p>
+      <p class="tagline">it was cheaper than .com.</p>
       <div class="output">
         <div><span class="key">status&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="val">online (i'm surprised too)</span></div>
         <div><span class="key">content&nbsp;&nbsp;&nbsp;</span> <span class="val">none</span></div>
         <div><span class="comment"><a href="http://www.mxguarddog.com/"># spam filter in the cloud</a></span></div>
+      </div>
+
+      <div class="input-area">
+        <div class="response-log" id="response-log"></div>
+        <div class="input-line">
+          <span class="ps1">root@localhost:~#</span>
+          <input type="text" id="cmd-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" autofocus>
+        </div>
       </div>
     </div>
   </div>
@@ -269,14 +326,107 @@
   </div>
 
 <script>
-  const terminal  = document.getElementById('terminal');
+  const terminal   = document.getElementById('terminal');
   const sessionMsg = document.getElementById('session-ended');
+  const cmdInput   = document.getElementById('cmd-input');
+  const log        = document.getElementById('response-log');
 
   let isMinimized = false;
   let isMaximized = false;
+  let enterCount  = 0;
+  let isClosed    = false;
 
-  /* ── Close ── */
+  /* ── Responses for repeated attempts ── */
+  const responses = [
+    // index 0: first attempt — generic error
+    (cmd) => [
+      { cls: 'err', text: `-bash: ${cmd || '(empty)'}: command not found` },
+    ],
+    // index 1
+    () => [
+      { cls: 'info', text: "i wasn't kidding. no content here." },
+    ],
+    // index 2
+    () => [
+      { cls: 'warn', text: "bold strategy, hitting enter again. let me know how that works out." },
+    ],
+    // index 3
+    () => [
+      { cls: 'info', text: "genuinely unclear what you think is going to happen here." },
+    ],
+    // index 4
+    () => [
+      { cls: 'warn', text: "i admire the commitment. the answer remains: no." },
+    ],
+    // index 5
+    () => [
+      { cls: 'info', text: "at this point you've spent more time here than i spent building this." },
+    ],
+    // index 6
+    () => [
+      { cls: 'warn', text: "what exactly are you hoping to find? a blog? a portfolio? a cry for help?" },
+    ],
+    // index 7
+    () => [
+      { cls: 'info', text: "fine. here's the content: there is no content. we've come full circle." },
+    ],
+    // index 8
+    () => [
+      { cls: 'warn', text: "i'm telling the spam filter about you." },
+    ],
+    // index 9+
+    () => [
+      { cls: 'err', text: "ERROR: user has exceeded the 'looking for content that doesn't exist' quota." },
+      { cls: 'info', text: "please try again when i've put something here. (don't hold your breath.)" },
+    ],
+  ];
+
+  function addLine(cls, text) {
+    const div = document.createElement('div');
+    div.className = `response-line ${cls}`;
+    div.textContent = text;
+    log.appendChild(div);
+  }
+
+  function handleCommand(raw) {
+    const cmd = raw.trim();
+
+    // Echo the command they typed
+    const echo = document.createElement('div');
+    echo.className = 'response-line cmd';
+    echo.innerHTML = `<span class="ps1">root@localhost:~#</span> ${escapeHtml(cmd)}`;
+    log.appendChild(echo);
+
+    // Pick the right response
+    const idx = Math.min(enterCount, responses.length - 1);
+    const lines = responses[idx](cmd);
+    lines.forEach(l => addLine(l.cls, l.text));
+    enterCount++;
+
+    // Scroll into view
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  cmdInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const val = cmdInput.value;
+      cmdInput.value = '';
+      handleCommand(val);
+    }
+  });
+
+  /* ── Window controls ── */
   document.getElementById('btn-close').addEventListener('click', () => {
+    isClosed = true;
     terminal.classList.add('closed');
     setTimeout(() => {
       terminal.style.display = 'none';
@@ -284,17 +434,14 @@
     }, 280);
   });
 
-  /* ── Minimize ── */
   document.getElementById('btn-minimize').addEventListener('click', () => {
-    if (isMaximized) return; // ignore while maximized, like real macOS
+    if (isMaximized) return;
     isMinimized = !isMinimized;
     terminal.classList.toggle('minimized', isMinimized);
   });
 
-  /* ── Maximize / restore ── */
   document.getElementById('btn-maximize').addEventListener('click', () => {
     if (isMinimized) {
-      // restore from minimized first
       isMinimized = false;
       terminal.classList.remove('minimized');
     }
@@ -302,7 +449,6 @@
     terminal.classList.toggle('maximized', isMaximized);
   });
 
-  /* Double-click titlebar to maximize (classic Mac behaviour) */
   document.getElementById('titlebar').addEventListener('dblclick', (e) => {
     if (e.target.classList.contains('dot')) return;
     isMaximized = !isMaximized;
@@ -313,13 +459,19 @@
     }
   });
 
+  /* Keep input focused when clicking anywhere in the terminal body */
+  document.getElementById('body').addEventListener('click', () => {
+    cmdInput.focus();
+  });
+
   /* ── Konami code easter egg ── */
   const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
   let konamiPos = 0;
   let konamiDone = false;
 
   document.addEventListener('keydown', (e) => {
-    if (konamiDone) return;
+    if (isClosed || konamiDone) return;
+    if (document.activeElement === cmdInput) return;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (key === KONAMI[konamiPos]) {
       konamiPos++;
@@ -333,48 +485,29 @@
   });
 
   function triggerEasterEgg() {
-    const output = document.querySelector('.output');
-
-    // new prompt line
     const promptLine = document.createElement('div');
-    promptLine.style.marginTop = '0.8rem';
-    promptLine.style.color = 'var(--dim)';
-    promptLine.style.fontSize = '0.75rem';
-    promptLine.innerHTML = '<span style="color:#ff5f57">root@localhost</span>:~# ls -la';
-    output.appendChild(promptLine);
+    promptLine.className = 'response-line cmd';
+    promptLine.innerHTML = '<span class="ps1">root@localhost:~#</span> ls -la';
+    log.appendChild(promptLine);
 
-    // ls output lines, revealed one at a time
     const lines = [
       'total 4',
       'drwxr-xr-x  2 root root   64 Jan  1 00:00 <span style="color:var(--accent)">.</span>',
       'drwxr-xr-x 18 root root  576 Jan  1 00:00 <span style="color:var(--accent)">..</span>',
       '-rwxr-xr-x  1 root root  128 Jan  1 00:00 <span style="color:var(--text)">website.sh</span>',
-      '<span style="color:var(--dim); font-style:italic"># that\'s it. there is nothing else.</span>',
+      '<span style="font-style:italic"># that\'s it. there is nothing else.</span>',
     ];
 
     lines.forEach((line, i) => {
       setTimeout(() => {
         const el = document.createElement('div');
-        el.style.fontSize = '0.75rem';
-        el.style.color = 'var(--dim)';
-        el.style.lineHeight = '1.8';
+        el.className = 'response-line info';
         el.style.opacity = '0';
         el.style.transition = 'opacity 0.2s ease';
         el.innerHTML = line;
-        output.appendChild(el);
+        log.appendChild(el);
         requestAnimationFrame(() => { el.style.opacity = '1'; });
-
-        // final cursor prompt after last line
-        if (i === lines.length - 1) {
-          setTimeout(() => {
-            const cursor = document.createElement('div');
-            cursor.style.marginTop = '0.4rem';
-            cursor.style.fontSize = '0.75rem';
-            cursor.style.color = 'var(--dim)';
-            cursor.innerHTML = '<span style="color:#ff5f57">root@localhost</span>:~# <span class="cursor"></span>';
-            output.appendChild(cursor);
-          }, 200);
-        }
+        log.scrollTop = log.scrollHeight;
       }, i * 120);
     });
   }
