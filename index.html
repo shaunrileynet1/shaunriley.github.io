@@ -52,6 +52,19 @@
     overflow: hidden;
     position: relative;
   }
+  .terminal.dragging {
+    transition: none;
+    user-select: none;
+  }
+  .resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    cursor: se-resize;
+    z-index: 10;
+  }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -115,13 +128,15 @@
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+    cursor: grab;
   }
+  .titlebar:active { cursor: grabbing; }
 
   /* ── Traffic-light dots ── */
   .dot {
     width: 10px; height: 10px;
     border-radius: 50%;
-    cursor: pointer;
+    cursor: default;
     position: relative;
     transition: filter 0.15s ease;
   }
@@ -301,6 +316,7 @@
       <div class="dot green"  id="btn-maximize" title="Maximize"></div>
       <div class="titlebar-label">shaunriley.net — bash</div>
     </div>
+    <div class="resize-handle" id="resize-handle"></div>
     <div class="body" id="body">
       <div class="prompt"><span>root@localhost</span>:~# ./website.sh</div>
       <h1>shaunriley.net</h1>
@@ -440,6 +456,17 @@
     }, 280);
   });
 
+  function clearDragStyles() {
+    terminal.style.position = '';
+    terminal.style.left = '';
+    terminal.style.top = '';
+    terminal.style.margin = '';
+    terminal.style.maxWidth = '';
+    terminal.style.width = '';
+    terminal.style.height = '';
+    terminal.querySelector('.body').style.maxHeight = '';
+  }
+
   document.getElementById('btn-minimize').addEventListener('click', () => {
     if (isMaximized) return;
     isMinimized = !isMinimized;
@@ -452,12 +479,14 @@
       terminal.classList.remove('minimized');
     }
     isMaximized = !isMaximized;
+    clearDragStyles();
     terminal.classList.toggle('maximized', isMaximized);
   });
 
   document.getElementById('titlebar').addEventListener('dblclick', (e) => {
     if (e.target.classList.contains('dot')) return;
     isMaximized = !isMaximized;
+    clearDragStyles();
     terminal.classList.toggle('maximized', isMaximized);
     if (isMaximized && isMinimized) {
       isMinimized = false;
@@ -467,6 +496,102 @@
 
   /* Keep input focused when clicking anywhere in the terminal body */
   document.getElementById('body').addEventListener('click', () => {
+    cmdInput.focus();
+  });
+
+  /* ── Drag to move ── */
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  document.getElementById('titlebar').addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('dot')) return;
+
+    // If maximized, restore to normal then start dragging from click position
+    if (isMaximized) {
+      isMaximized = false;
+      terminal.classList.remove('maximized');
+      // Restore to fixed, centered under the cursor
+      const w = 560;
+      const left = Math.min(Math.max(e.clientX - w / 2, 0), window.innerWidth - w);
+      const top = Math.max(e.clientY - 10, 0);
+      terminal.style.position = 'fixed';
+      terminal.style.left = left + 'px';
+      terminal.style.top = top + 'px';
+      terminal.style.margin = '0';
+      terminal.style.maxWidth = w + 'px';
+      dragOffsetX = e.clientX - left;
+      dragOffsetY = e.clientY - top;
+      isDragging = true;
+      terminal.classList.add('dragging');
+      e.preventDefault();
+      return;
+    }
+
+    // Switch to fixed positioning on first drag
+    if (!terminal.style.position || terminal.style.position !== 'fixed') {
+      const rect = terminal.getBoundingClientRect();
+      terminal.style.position = 'fixed';
+      terminal.style.left = rect.left + 'px';
+      terminal.style.top = rect.top + 'px';
+      terminal.style.margin = '0';
+      terminal.style.maxWidth = terminal.offsetWidth + 'px';
+    }
+
+    isDragging = true;
+    dragOffsetX = e.clientX - terminal.getBoundingClientRect().left;
+    dragOffsetY = e.clientY - terminal.getBoundingClientRect().top;
+    terminal.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    terminal.style.left = (e.clientX - dragOffsetX) + 'px';
+    terminal.style.top  = (e.clientY - dragOffsetY) + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    terminal.classList.remove('dragging');
+    cmdInput.focus();
+  });
+
+  /* ── Resize handle ── */
+  const resizeHandle = document.getElementById('resize-handle');
+  let isResizing = false;
+  let resizeStartX = 0;
+  let resizeStartY = 0;
+  let resizeStartW = 0;
+  let resizeStartH = 0;
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    if (isMaximized) return;
+    isResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = terminal.offsetWidth;
+    resizeStartH = terminal.offsetHeight;
+    terminal.classList.add('dragging'); // disable transitions
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const newW = Math.max(320, resizeStartW + (e.clientX - resizeStartX));
+    const newH = Math.max(200, resizeStartH + (e.clientY - resizeStartY));
+    terminal.style.width = newW + 'px';
+    terminal.style.maxWidth = newW + 'px';
+    terminal.style.height = newH + 'px';
+    terminal.querySelector('.body').style.maxHeight = (newH - 36) + 'px';
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!isResizing) return;
+    isResizing = false;
+    terminal.classList.remove('dragging');
     cmdInput.focus();
   });
 
