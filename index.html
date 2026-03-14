@@ -160,12 +160,24 @@
 
   /* ── Traffic-light dots ── */
   .dot {
-    width: 10px; height: 10px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     cursor: pointer;
     position: relative;
     transition: filter 0.15s ease;
+    flex-shrink: 0;
   }
+
+  /* Invisible enlarged hit area via ::before — does NOT interfere with ::after icon */
+  .dot::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    /* transparent — just expands the clickable area */
+  }
+
   .dot::after {
     content: '';
     position: absolute;
@@ -180,6 +192,7 @@
     font-weight: 900;
     opacity: 0;
     transition: opacity 0.1s ease;
+    pointer-events: none;
   }
   .dot.red::after    { content: '✕'; }
   .dot.yellow::after { content: '−'; }
@@ -380,43 +393,33 @@
 
   /* ── Responses for repeated attempts ── */
   const responses = [
-    // index 0: first attempt — generic error
     (cmd) => [
       { cls: 'err', text: `-bash: ${cmd || '(empty)'}: command not found` },
     ],
-    // index 1
     () => [
       { cls: 'info', text: "i wasn't kidding. no content here." },
     ],
-    // index 2
     () => [
       { cls: 'warn', text: "bold strategy, hitting enter again. let me know how that works out." },
     ],
-    // index 3
     () => [
       { cls: 'info', text: "genuinely unclear what you think is going to happen here." },
     ],
-    // index 4
     () => [
       { cls: 'warn', text: "i admire the commitment. the answer remains: no." },
     ],
-    // index 5
     () => [
       { cls: 'info', text: "at this point you've spent more time here than i spent building this." },
     ],
-    // index 6
     () => [
       { cls: 'warn', text: "what exactly are you hoping to find? a blog? a portfolio? a cry for help?" },
     ],
-    // index 7
     () => [
       { cls: 'info', text: "fine. here's the content: there is no content. we've come full circle." },
     ],
-    // index 8
     () => [
       { cls: 'warn', text: "i'm telling the spam filter about you." },
     ],
-    // index 9+
     () => [
       { cls: 'err', text: "ERROR: user has exceeded the 'looking for content that doesn't exist' quota." },
       { cls: 'info', text: "please try again when i've put something here. (don't hold your breath.)" },
@@ -433,25 +436,21 @@
   function handleCommand(raw) {
     const cmd = raw.trim();
 
-    // Echo the command they typed
     const echo = document.createElement('div');
     echo.className = 'response-line cmd';
     echo.innerHTML = `<span class="ps1">root@localhost:~#</span> ${escapeHtml(cmd)}`;
     log.appendChild(echo);
 
-    // Check for special commands first
     if (cmd.toLowerCase() === 'help') {
       addLine('err', 'bash: help: none found. if you find some, let me know.');
       addLine('info', 'have you tried turning it off and back on again?');
     } else {
-      // Pick the right response
       const idx = Math.min(enterCount, responses.length - 1);
       const lines = responses[idx](cmd);
       lines.forEach(l => addLine(l.cls, l.text));
       enterCount++;
     }
 
-    // Scroll into view
     log.scrollTop = log.scrollHeight;
   }
 
@@ -473,7 +472,10 @@
   });
 
   /* ── Window controls ── */
-  document.getElementById('btn-close').addEventListener('mousedown', (e) => { e.preventDefault(); });
+  document.getElementById('btn-close').addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  document.getElementById('btn-minimize').addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  document.getElementById('btn-maximize').addEventListener('mousedown', (e) => { e.stopPropagation(); });
+
   document.getElementById('btn-close').addEventListener('click', () => {
     isClosed = true;
     terminal.classList.add('closed');
@@ -494,14 +496,12 @@
     terminal.querySelector('.body').style.maxHeight = '';
   }
 
-  document.getElementById('btn-minimize').addEventListener('mousedown', (e) => { e.preventDefault(); });
   document.getElementById('btn-minimize').addEventListener('click', () => {
     if (isMaximized) return;
     isMinimized = !isMinimized;
     terminal.classList.toggle('minimized', isMinimized);
   });
 
-  document.getElementById('btn-maximize').addEventListener('mousedown', (e) => { e.preventDefault(); });
   document.getElementById('btn-maximize').addEventListener('click', () => {
     if (isMinimized) {
       isMinimized = false;
@@ -523,7 +523,6 @@
     }
   });
 
-  /* Keep input focused when clicking anywhere in the terminal body */
   document.getElementById('body').addEventListener('click', () => {
     cmdInput.focus();
   });
@@ -536,11 +535,9 @@
   document.getElementById('titlebar').addEventListener('mousedown', (e) => {
     if (e.target.classList.contains('dot')) return;
 
-    // If maximized, restore to normal then start dragging from click position
     if (isMaximized) {
       isMaximized = false;
       terminal.classList.remove('maximized');
-      // Restore to fixed, centered under the cursor
       const w = 560;
       const left = Math.min(Math.max(e.clientX - w / 2, 0), window.innerWidth - w);
       const top = Math.max(e.clientY - 10, 0);
@@ -557,7 +554,6 @@
       return;
     }
 
-    // Switch to fixed positioning on first drag
     if (!terminal.style.position || terminal.style.position !== 'fixed') {
       const rect = terminal.getBoundingClientRect();
       terminal.style.position = 'fixed';
@@ -594,7 +590,6 @@
     e.stopPropagation();
   });
 
-  /* ── Unified mousemove and mouseup handlers ── */
   document.addEventListener('mousemove', (e) => {
     if (isDragging) {
       const rect = terminal.getBoundingClientRect();
